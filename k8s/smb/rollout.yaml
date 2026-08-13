@@ -24,7 +24,7 @@ spec:
             path: valkey-password
       containers:
       - name: api
-        image: ghcr.io/smjjang-dev/notiflex/api:sha-ec87906
+        image: ghcr.io/smjjang-dev/notiflex/api:sha-cbbb0fb
         ports:
         - containerPort: 8080
         env:
