@@ -151,3 +151,8 @@ k3s 마이그레이션 검증이 끝난 뒤 실제 운영 관점에서 발견된
 - Loki와 동일한 이유로 Tempo도 데이터소스 미등록 상태였음 — `helm-values/kube-prometheus.yaml`의 `grafana.additionalDataSources`에 Tempo(`http://tempo.monitoring.svc.cluster.local:3200`) 추가로 해결.
 - 검증: `/health`, `/id`에 실제 요청을 보낸 뒤 Tempo `/api/search`로 조회 → 방금 보낸 요청들이 트레이스로 잡히는 것 확인. 트레이스 상세(`/api/traces/{id}`)에서 span 이름·소요시간까지 정상 확인.
 - **참고(사소한 개선 여지)**: `app/main.go`가 OTel Resource에 `service.name`을 명시적으로 설정하지 않아, Tempo에 `rootServiceName`이 `unknown_service:notiflex-api`로 잡힘 — 기능상 문제는 없으나 Tempo UI에서 서비스명으로 검색/필터링할 때 보기 불편할 수 있음.
+
+### `service.name` 리소스 속성 추가
+- `initTracer()`에서 `resource.Merge(resource.Default(), resource.NewSchemaless(attribute.String("service.name", "notiflex-api")))`로 TracerProvider에 명시적 서비스명 부여.
+- semconv 패키지(버전 고정 이슈 있음) 대신 `attribute.String` 직접 사용으로 의존성 추가 없이 처리.
+- CI/CD 파이프라인으로 배포 후 Tempo에서 `rootServiceName`이 `notiflex-api`로 정상 표기되는지 확인 예정.

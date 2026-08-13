@@ -13,8 +13,10 @@ import (
 	"github.com/IBM/sarama"
 	"github.com/valkey-io/valkey-go"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -45,7 +47,15 @@ func initTracer(endpoint string) func() {
 		log.Printf("OTel exporter 생성 실패: %v", err)
 		return func() {}
 	}
-	tp := sdktrace.NewTracerProvider(sdktrace.WithBatcher(exp))
+	res, err := resource.Merge(
+		resource.Default(),
+		resource.NewSchemaless(attribute.String("service.name", "notiflex-api")),
+	)
+	if err != nil {
+		log.Printf("OTel resource 생성 실패: %v", err)
+		res = resource.Default()
+	}
+	tp := sdktrace.NewTracerProvider(sdktrace.WithBatcher(exp), sdktrace.WithResource(res))
 	otel.SetTracerProvider(tp)
 	otel.SetTextMapPropagator(propagation.TraceContext{})
 	return func() { tp.Shutdown(ctx) }
