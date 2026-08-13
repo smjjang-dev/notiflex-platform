@@ -146,3 +146,8 @@ k3s 마이그레이션 검증이 끝난 뒤 실제 운영 관점에서 발견된
 - 검증: Loki 라벨 조회로 로그가 들어오는 네임스페이스 확인(`argo-rollouts, argocd, enterprise, kafka, kube-system, monitoring, notiflex` 7개 전부), `{namespace="notiflex"}` 쿼리로 실제 healthcheck 로그 라인까지 확인.
 - 접속: `/grafana/` 로그인 후 좌측 **Explore** 메뉴에서 데이터소스를 `Loki`로 선택 → LogQL로 조회(예: `{namespace="notiflex"}`).
 - **교훈**: 서브패스 노출(`serve_from_sub_path`)은 외부 접근뿐 아니라 같은 클러스터 내부의 서비스 간 스크레이핑/헬스체크 경로에도 영향을 줄 수 있다 — 도입 시 내부 클라이언트(Prometheus 등)의 접근 경로도 같이 점검 필요.
+
+### Grafana에 Tempo 데이터소스 연결 (트레이스도 한 곳에서 보기)
+- Loki와 동일한 이유로 Tempo도 데이터소스 미등록 상태였음 — `helm-values/kube-prometheus.yaml`의 `grafana.additionalDataSources`에 Tempo(`http://tempo.monitoring.svc.cluster.local:3200`) 추가로 해결.
+- 검증: `/health`, `/id`에 실제 요청을 보낸 뒤 Tempo `/api/search`로 조회 → 방금 보낸 요청들이 트레이스로 잡히는 것 확인. 트레이스 상세(`/api/traces/{id}`)에서 span 이름·소요시간까지 정상 확인.
+- **참고(사소한 개선 여지)**: `app/main.go`가 OTel Resource에 `service.name`을 명시적으로 설정하지 않아, Tempo에 `rootServiceName`이 `unknown_service:notiflex-api`로 잡힘 — 기능상 문제는 없으나 Tempo UI에서 서비스명으로 검색/필터링할 때 보기 불편할 수 있음.
