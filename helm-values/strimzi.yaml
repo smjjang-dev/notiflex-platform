@@ -1,0 +1,3 @@
+# 단일 노드(k3s) 환경이라 노드풀 기반 nodeSelector 불필요.
+# GKE 버전에서는 cloud.google.com/gke-nodepool: worker-pool 을 사용했음(docs/gke-legacy 참고).
+{}
