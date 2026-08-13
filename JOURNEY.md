@@ -178,3 +178,26 @@ k3s 마이그레이션 검증이 끝난 뒤 실제 운영 관점에서 발견된
 - Prometheus에 로드된 alerting 규칙 전수 확인 — 총 **156개**(kube-prometheus-stack 기본 제공 155개 + 커스텀 `PodRestartTooMany` 1개), 카테고리: kubernetes-apps/node-exporter/prometheus/etcd/kubelet/resources/storage/apiserver 등.
 - `KubeJobFailed`가 `pending` 상태인 것을 확인해 원인 조사: `notiflex-healthcheck-297765{35,40,45}` 3개 Job이 `Failed` 상태로 남아있었음 — 전부 새벽 3시대(Valkey 비밀번호 불일치로 앱이 응답 못하던 시점)에 실패한 **이미 해결된 과거 문제의 잔여 기록**. CronJob의 `failedJobsHistoryLimit: 3`이 이걸 계속 보관하고 있었음.
 - 3개 Job 삭제 → `kube_job_failed` 메트릭 즉시 사라짐 → 다음 평가 주기에 `KubeJobFailed`가 `inactive`로 정상 해소되는 것까지 확인.
+
+## 시크릿 관리 정리 + Canary 자동 롤백 도입 (2026-08-13)
+
+### 시크릿 유출 발견 및 정리
+- `k8s/smb/valkey-secret.yaml`, `k8s/enterprise/valkey-secret.yaml`이 base64로 "인코딩"된 Valkey 비밀번호를 담은 채 git에 커밋되어 있었음(base64는 암호화가 아니라 평문이나 다름없음) — 이미 GitHub(private repo)에 두 커밋으로 push된 상태였음.
+- 대응: ① 비밀번호 로테이션(클러스터에 즉시 반영, Valkey/앱 파드 재기동으로 검증) ② 두 파일 git 추적 해제 + `.gitignore`에 `*-secret.yaml` 추가 ③ `git filter-branch`로 히스토리에서 완전 제거 후 **origin에 force-push** ④ ONBOARDING.md에 imperative 재생성 명령 문서화(GHCR pull secret과 동일 패턴).
+- **재발 방지 장치 추가**: `.githooks/pre-commit`(populated `kind: Secret` 매니페스트, 프라이빗 키, AWS/GitHub/Slack 토큰 패턴을 커밋 직전에 차단) + `.github/workflows/secret-scan.yaml`(기존 `ci.yaml`이 `paths: [app/**]`라 k8s 매니페스트 변경엔 반응 안 하는 사각지대를 메우는 경로 무제한 백스톱). 다른 클론에서 fresh clone → `git config core.hooksPath .githooks` 활성화까지 실제로 재현해 검증, CI 백스톱도 가짜 시크릿을 실제로 push해서 빨간 X로 실패하는 것까지 확인 후 되돌림.
+
+### Canary 배포 에러율 기반 자동 롤백
+- 기존 canary(`strategy.canary`, `setWeight`/`pause` 고정 스텝)는 실제 헬스/에러율과 무관하게 타이머로만 진행되고, `/health`가 의존성과 무관한 얕은 체크라 로직 버그가 있어도 그대로 100% 승격될 수 있는 구조였음(ADR-007 문서상 "Blue/Green"이라 적혀 있었지만 실제 매니페스트는 canary — 문서-구현 불일치도 함께 발견).
+- 추가한 것: `app/main.go`에 `http_requests_total{path,code}` 카운터 + `/metrics`(prometheus/client_golang) → Service에 라벨/named port 부여 → `ServiceMonitor`(smb/enterprise 각각)로 kube-prometheus가 스크레이핑 → `ClusterAnalysisTemplate`(canary preview 서비스의 5xx 비율 쿼리, `failureLimit: 2`) → 양쪽 Rollout에 `strategy.canary.analysis`로 background analysis 연결(`startingStep: 1`).
+- **해피패스 실증**: 실제 git push → CI 빌드/푸시/매니페스트 패치 → ArgoCD sync → 진짜 canary 롤아웃 발생 → `AnalysisRun`이 Prometheus에서 실제 에러율(0)을 측정하며 `Successful` → 100% 승격.
+- **네거티브 테스트(자동 abort 실증)**: `/id`를 일부러 항상 500 반환하도록 수정해 배포. 1차 시도는 상태 확인하느라 시간을 끄는 사이 90초 canary 창이 끝나버려 에러 트래픽이 늦게 도착 — **버그 이미지가 그대로 100% 승격되어 실제로 프로덕션에 노출되는 사고**로 이어짐(`/id` 500 확인) → 즉시 이전 커밋으로 되돌려 복구. 2차 시도는 canary가 뜨기 전에 백그라운드 부하생성기를 미리 띄워두고 재시도 → 측정값이 0.40, 0.63, 0.93으로 치솟으며 `failureLimit: 2` 충족 → Rollout이 `phase: Degraded, abort: true`로 **자동 중단**, 두 파드 모두 마지막 정상 이미지로 유지된 채 버그 이미지는 끝까지 승격되지 않음을 확인. 이후 코드는 정상으로 되돌려 재배포.
+- **부수 발견(ArgoCD prune 함정)**: 시크릿 정리 때 git에서 뺀 `valkey-secret.yaml`이, ArgoCD(`prune: true`+`selfHeal: true`)가 다음 sync에서 "git에 더 이상 없는 리소스"로 보고 라이브 Secret을 **즉시 삭제**해버림(예전에 ArgoCD가 한 번 적용한 리소스는 git에서 지운다고 안전해지지 않음) — canary 테스트 도중 이걸로 파드가 못 뜨는 걸 발견하고 즉시 재인지. 순수 `kubectl create`로 재생성(ArgoCD가 만든 적 없는 오브젝트라 다시는 안 지워짐)하고 ONBOARDING.md에 이 함정을 기록.
+
+### Kafka 발행 비동기화 (요청 몰릴 때 지연 문제)
+- `idHandler`가 `sarama.SyncProducer`로 Kafka produce+ack를 기다린 뒤 응답하고 있어, 동시 요청이 몰리면 이 대기시간이 그대로 누적되는 구조였음(Valkey INCR 자체는 서브밀리초라 병목 아님).
+- `sarama.AsyncProducer`로 전환: `Input()`에 non-blocking send 후 즉시 응답, 내부 버퍼가 가득 차는 극단적 상황에서만 드롭+로그(기존에도 Kafka 실패는 로그만 남기고 무시하던 best-effort 정책 유지). `Errors()`/`Successes()`를 계속 비워주는 `drainKafkaProducer` goroutine 추가(안 비우면 결국 `Input()`도 막힘).
+- 검증: 로컬 Docker 스모크 테스트(Valkey만) 통과 → 실제 canary 배포 → 클러스터 내 진짜 Kafka로 `/id` 호출 후 consumer 로그에 정상 수신 확인, 순차 요청 30개 전부 200.
+
+### enterprise 네임스페이스 따라잡기
+- CI가 `k8s/smb/rollout.yaml`만 자동 패치하는 기존 known gap 때문에 enterprise는 여전히 `v0.3.1`(위 기능들 전부 없는 구버전)에 머물러 있었음 — `k8s/enterprise/rollout.yaml`의 이미지 태그를 수동으로 `sha-4506e5c`(metrics+canary analysis+비동기 Kafka 전부 포함)로 맞춰 커밋/push.
+- enterprise에서 canary+analysis 조합이 **처음으로 실전 동작** — 20% → analysis(`Successful`) → 100% 승격까지 확인, `/id`·`/version` 정상 응답.

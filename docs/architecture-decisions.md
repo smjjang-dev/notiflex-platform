@@ -78,6 +78,8 @@
 
 > **업데이트 (2026-08-13, k3s 마이그레이션)**: GKE Secret Manager/Workload Identity는 GCP 종속 기능이라 k3s에서 대안이 없음 — 순수 K8s `Secret`(당시 기각했던 대안)으로 전환. 홈랩 단일 사용자 환경이라 Vault 같은 별도 시크릿 매니저는 과설계로 판단, 대신 k3s 자체의 `--secrets-encryption` 옵션으로 최소한의 저장 시 암호화만 확보. `/mnt/secrets/` 파일 마운트 패턴은 볼륨 타입만 CSI→`secret`으로 바뀌었을 뿐 그대로 유지되어 앱 코드 변경은 없었음. 상세는 `docs/infraPlan.md` Phase 3.
 
+> **업데이트 (2026-08-13, 시크릿 유출 대응)**: `valkey-secret.yaml`이 base64 값 그대로 git에 커밋되어 있던 것을 발견(위 저장 시 암호화는 etcd 내부만 보호할 뿐 git 커밋은 막지 못하는 사각지대였음) — 비밀번호 로테이션, git 히스토리에서 완전 제거(force-push 포함), `.gitignore` 추가로 대응. 재발 방지로 `.githooks/pre-commit`(populated Secret 매니페스트/토큰 패턴 커밋 차단) + `.github/workflows/secret-scan.yaml`(경로 무제한 CI 백스톱)을 추가하고 실제로 가짜 시크릿을 push해 둘 다 차단되는 것을 확인. **부수 발견**: git에서 뺀 Secret을 ArgoCD(`prune: true`)가 다음 sync에서 곧바로 삭제해버리는 함정을 실전에서 겪음 — 예전에 ArgoCD가 한 번이라도 적용한 리소스는 git에서만 지운다고 안전해지지 않고, `kubectl create`로 새로 만들어야(ArgoCD 추적 흔적이 없어야) 다시 안 지워짐. 상세는 `JOURNEY.md` 2026-08-13 "시크릿 유출 발견 및 정리" 절.
+
 ## ADR-010: 배포 전략 전환 — Canary (ch6.3)
 **시점**: 2026-04 / **결정**: Argo Rollouts Canary로 전환 (Blue/Green에서)
 **이유**:
@@ -85,6 +87,8 @@
 - canaryService/stableService 분리 — 문제 발생 시 즉각 rollback
 - pause 단계 — 각 단계에서 모니터링 후 다음 단계로
 - Prometheus 메트릭 기반 자동 판단 확장 가능
+
+> **업데이트 (2026-08-13)**: 마지막 이유("Prometheus 메트릭 기반 자동 판단 확장 가능")를 실제로 구현. 그 전까지는 `setWeight`/`pause`가 순수 타이머 기반이라 canary가 실제로 건강한지와 무관하게 진행됐고, `/health`도 의존성과 무관한 얕은 체크라 로직 버그가 있어도 그대로 100% 승격될 수 있는 구조였음. `app/main.go`에 `http_requests_total{path,code}` 메트릭 + `/metrics`를 추가하고 `ServiceMonitor`로 스크레이핑, `ClusterAnalysisTemplate`(canary preview 서비스의 5xx 비율 쿼리, `failureLimit: 2`)을 양쪽 Rollout에 background analysis로 연결. 의도적으로 버그 있는 빌드를 배포해 실제 자동 abort까지 실증(`phase: Degraded, abort: true`) — 단, 이 검증 과정에서 canary 90초 창 안에 에러 트래픽이 없으면(실사용자가 없는 이 환경 특성상) 조용히 100% 승격되어버리는 위험도 실제로 한 번 겪음(버그 빌드가 잠깐 프로덕션에 노출됨, 즉시 롤백). 실서비스라면 상시 유입되는 사용자 트래픽이 이 역할을 대신하므로 문제되지 않음. 상세는 `JOURNEY.md` 2026-08-13 "Canary 배포 에러율 기반 자동 롤백" 절.
 
 ## ADR-011: 노드 스케줄링 — nodeSelector (ch7.2)
 **시점**: 2026-04 / **결정**: GKE 자동 라벨 `cloud.google.com/gke-nodepool` 기반 nodeSelector 채택 (vs nodeAffinity, Taint/Toleration)
