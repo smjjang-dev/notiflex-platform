@@ -91,5 +91,6 @@ curl http://localhost/id
   # 비밀번호를 바꿨다면 valkey-primary-0을 재시작해야 새 값을 반영함
   kubectl delete pod valkey-primary-0 -n notiflex
   ```
+- 시크릿을 git에서 빼자마자(`git rm --cached` 등) `secret "valkey" not found`로 파드가 못 뜨는 경우 → ArgoCD `prune: true` 앱이 "git에 더 이상 없는 리소스"로 보고 그 즉시 삭제(prune)해버린 것. 예전에 ArgoCD가 한 번이라도 적용한 적 있는 리소스는 git에서 지운다고 안전해지는 게 아니라 **다음 sync에서 즉시 삭제됨** — 시크릿을 git 추적에서 빼는 작업 직후엔 반드시 `kubectl get secret <name> -n <ns>`로 살아있는지 확인하고, 지워졌으면 위 명령으로 재생성(이번엔 ArgoCD가 만든 적 없는 새 오브젝트라 다시 pruned 되지 않음)
 - Strimzi가 `Unsupported Kafka.spec.kafka.version` 에러 → 오퍼레이터 버전이 올라가며 구버전 Kafka 지원이 빠질 수 있음, 오퍼레이터 로그의 지원 버전 목록 확인 후 `k8s/kafka/kafka-cluster.yaml`의 `version` 값 조정
 - k3d에서 Fluent Bit DaemonSet `FailedMount: /etc/machine-id` → k3d 노드가 컨테이너라 발생하는 노트북 전용 이슈, `daemonSetVolumes`에서 `etcmachineid` 제거 후 설치(NAS 실기기에서는 발생하지 않음)
