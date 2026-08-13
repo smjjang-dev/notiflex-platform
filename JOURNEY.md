@@ -157,3 +157,10 @@ k3s 마이그레이션 검증이 끝난 뒤 실제 운영 관점에서 발견된
 - semconv 패키지(버전 고정 이슈 있음) 대신 `attribute.String` 직접 사용으로 의존성 추가 없이 처리.
 - **1차 시도 실패 + 원인**: `resource.Merge(resource.Default(), myResource)` 순서로 넣었더니 여전히 `unknown_service:notiflex-api`로 나옴 — `resource.Merge(a, b)`는 키 충돌 시 **a의 값이 우선**하는데, `resource.Default()`가 이미 자체 `unknown_service:...` 서비스명을 갖고 있어서 내가 지정한 값이 조용히 버려지고 있었음(에러 리턴 없이). 인자 순서를 `resource.Merge(myResource, resource.Default())`로 바꿔서 해결.
 - CI/CD 배포 후 Tempo `rootServiceName`이 `notiflex-api`로 정상 표기됨을 재확인.
+
+### 알림(Alerting) 파이프라인 점검
+- "문제 생기면 자동 알림 받을 수 있나" 질문 계기로 점검 — 두 가지 미비점 발견:
+  1. `k8s/monitoring/pod-restart-alert.yaml`(PrometheusRule)이 저장소에만 있고 **클러스터에 한 번도 적용된 적이 없었음** — `kubectl apply`로 적용.
+  2. Alertmanager의 receiver가 기본값 `"null"`(no-op)만 있어서, 규칙이 발동해도 실제로는 아무 데도 알림이 안 가는 상태였음.
+- 적용 후 검증: Prometheus가 규칙 로드(`health: ok`, `state: inactive`=정상), Prometheus↔Alertmanager 연결(`activeAlertmanagers`) 확인 — **감지 파이프라인은 끝까지 정상 동작**, 마지막 "어디로 보낼지"만 비어있는 상태.
+- 실제 알림 채널은 **Discord webhook**으로 정하고 연결은 보류 — webhook URL 받으면 Alertmanager `receivers` 설정에 `discord_configs` 추가 예정.
