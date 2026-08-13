@@ -172,3 +172,9 @@ k3s 마이그레이션 검증이 끝난 뒤 실제 운영 관점에서 발견된
 - **부수 발견**: 활성 알림 목록에 `KubeControllerManagerDown`/`KubeSchedulerDown`/`KubeProxyDown`이 이미 떠 있었음 — k3s는 controller-manager/scheduler/kube-proxy를 별도 파드가 아니라 `k3s server` 프로세스 안에 내장하므로 `absent(up{job="..."})` 기반 기본 규칙이 **k3s에서는 구조적으로 항상 오탐**(NAS에서도 동일하게 발생할 것). Slack 라우팅에서 이 3개만 `null`로 mute 처리.
 - `NodeClockNotSynchronising`도 active였는데 이건 진짜 — 실측 `node_timex_sync_status: 0`, 오차 16초. **Docker Desktop WSL2 VM 시계 드리프트**로 추정(노트북 환경 한정, NAS에서는 미발생 예상) — mute하지 않고 그대로 둠.
 - **트러블슈팅**: helm upgrade가 백그라운드 실행 중 타임아웃으로 끊기면서 릴리스가 `pending-upgrade`에 걸려 다음 upgrade가 `another operation in progress`로 실패 — `helm rollback kube-prometheus <이전 정상 리비전>`으로 `deployed` 상태 복구 후 재적용.
+- Slack 테스트 알림 수신 확인(사용자 확인 완료).
+
+### 알림 규칙 전수 점검 + `KubeJobFailed` 원인 규명
+- Prometheus에 로드된 alerting 규칙 전수 확인 — 총 **156개**(kube-prometheus-stack 기본 제공 155개 + 커스텀 `PodRestartTooMany` 1개), 카테고리: kubernetes-apps/node-exporter/prometheus/etcd/kubelet/resources/storage/apiserver 등.
+- `KubeJobFailed`가 `pending` 상태인 것을 확인해 원인 조사: `notiflex-healthcheck-297765{35,40,45}` 3개 Job이 `Failed` 상태로 남아있었음 — 전부 새벽 3시대(Valkey 비밀번호 불일치로 앱이 응답 못하던 시점)에 실패한 **이미 해결된 과거 문제의 잔여 기록**. CronJob의 `failedJobsHistoryLimit: 3`이 이걸 계속 보관하고 있었음.
+- 3개 Job 삭제 → `kube_job_failed` 메트릭 즉시 사라짐 → 다음 평가 주기에 `KubeJobFailed`가 `inactive`로 정상 해소되는 것까지 확인.
