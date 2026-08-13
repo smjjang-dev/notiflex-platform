@@ -75,15 +75,20 @@
 | **노드 전체 사용량**(`kubectl top node`) | - | **~3.95Gi / 7.7Gi (51%)** | 파드 합계와 약 2.4Gi 차이 = containerd/kubelet/Docker Desktop WSL2 VM 기반 오버헤드 |
 
 **중요 발견**: 파드별 사용량 합계(~1.5Gi)와 노드 전체 사용량(~3.95Gi) 사이에 상당한 차이가 있음 — k3s 런타임 자체(containerd, kubelet) + 노트북은 Docker Desktop의 WSL2 가상머신 기반 오버헤드가 추가로 존재하기 때문. NAS는 Docker Desktop 가상화 계층 없이 k3s가 리눅스에 직접 설치되므로 이 오버헤드는 노트북보다 작을 것으로 예상되나, **정확한 값은 Phase 10 NAS 설치 후 재실측 필요**. 워크로드(파드) 자체의 실측 메모리는 예산표보다 전반적으로 여유 있음이 확인됨 — 이전 예상치(소계 ~3.8Gi)는 보수적으로 잡았던 것으로 판단.
-| Strimzi 오퍼레이터 | ~256Mi | |
-| Kafka(KRaft combined, heap 512Mi) | ~800Mi~1Gi | 가장 무거운 단일 컴포넌트 |
-| **총합** | **~5~5.5Gi** | 9~10Gi 예산 내 여유 확보 |
 
-- `kubectl top pod` / `kubectl top node`로 실측치를 확인해 위 예산표를 보정한다. 이 실측 데이터가 Phase 10(NAS) 설치 여부/축소 여부 판단 근거가 된다.
+### Phase 8. Kafka(Strimzi) combined 모드 배치 — 실측 결과 포함
+- KRaft 모드, broker+controller combined 단일 파드(`KafkaNodePool.spec.roles: [controller, broker]`, replicas: 1) — 원본부터 이미 combined 구성이라 별도 축소 작업 불필요, 확인만 진행
+- JVM 힙 `jvmOptions: {"-Xms": "512m", "-Xmx": "512m"}` 명시적 제한 추가 (`k8s/kafka/kafka-cluster.yaml`)
+- **문제 + 해결**: 최신 Strimzi 오퍼레이터(1.1.0, helm 최신)가 원본의 `kafka.spec.kafka.version: 4.1.0`을 더 이상 지원하지 않음(지원 버전: 4.2.0/4.2.1/4.3.0) — 마이그레이션과 무관한 순수 버전 드리프트. `4.3.0`으로 상향 후 정상 기동
+- 실측: `notiflex-kafka-controller-0` 387Mi, `notiflex-kafka-entity-operator` 150Mi, `strimzi-cluster-operator` 233Mi → 합계 **~770Mi**, 예산(~800Mi~1Gi)과 거의 일치
+- `KafkaTopic/notifications` 정상 생성 확인(`READY: True`)
+- 클러스터 전체 누적 사용량(Kafka 포함): 노드 전체 **~5.26Gi / 7.7Gi (68%)**
 
-### Phase 8. Kafka(Strimzi) combined 모드 배치
-- KRaft 모드, broker+controller combined 단일 파드로 축소 (기존 3노드 `KafkaNodePool` 전제 축소)
-- JVM 힙 `-Xmx512m -Xms512m` 명시적 제한
+| 컴포넌트 | 요청 예상치 | 실측 메모리 |
+|---|---|---|
+| Strimzi 오퍼레이터 | ~256Mi | ~233Mi |
+| Kafka(KRaft combined, heap 512Mi) + entity-operator | ~800Mi~1Gi | ~537Mi |
+| **총합(전체 스택, Kafka 포함)** | ~5~5.5Gi | **~5.26Gi** |
 
 ### Phase 9. ArgoCD + Argo Rollouts 설치 및 검증(노트북)
 - `argocd/root-app.yaml`의 `destination.server: https://kubernetes.default.svc`(in-cluster)는 변경 불필요
