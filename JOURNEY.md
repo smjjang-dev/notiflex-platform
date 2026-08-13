@@ -111,3 +111,19 @@ ch9 완료 이후, GKE 원본을 개인 Synology DS920+ NAS(RAM 12GB)에서 운�
 - k3d 노드(컨테이너)에 `/etc/machine-id` 파일이 없어 Fluent Bit DaemonSet 마운트 실패 → 노트북 전용 volumes 오버라이드로 우회(NAS에서는 미발생 예상)
 - GHCR private 이미지 pull 401 → `imagePullSecrets`로 해결
 - Valkey는 원본 저장소에도 매니페스트가 없었음(ADR-008에 따라 Bitnami Helm으로 별도 설치) → `helm-values/valkey.yaml` 신규 추가
+
+## 마이그레이션 이후 후속 작업 (2026-08-13)
+
+k3s 마이그레이션 검증이 끝난 뒤 실제 운영 관점에서 발견된 이슈 정리와, 이 파이프라인 위에서 진행한 첫 기능 추가.
+
+### enterprise 네임스페이스 정상화
+- `enterprise/rollout.yaml`이 참조하는 `ghcr.io/smjjang-dev/notiflex/api:v0.3.1` 태그가 실제로는 한 번도 push된 적이 없어 `ImagePullBackOff` 상태였음 — CI는 `k8s/smb/rollout.yaml`만 자동 패치하도록 되어 있어 enterprise는 처음부터 수동 승격 대상이었기 때문. `app/`을 직접 빌드해 해당 태그로 GHCR push하여 해결.
+- `imagePullSecrets` 추가 이전에 생성됐던 구버전 ReplicaSet이 잔존해 재발 → 삭제로 정리 (smb 때와 동일 패턴).
+- **추가 발견**: enterprise 전용 `valkey` Secret이 원본 저장소의 예전 비밀번호(`bTdMRTR1dVUyWQ==`)를 그대로 갖고 있었는데, 실제 접속 대상인 공유 Valkey 인스턴스(notiflex 네임스페이스)는 새 비밀번호로 떠 있어 `WRONGPASS` 에러 발생. `k8s/enterprise/valkey-secret.yaml`을 동일 값으로 수정 후 커밋 — **kubectl로 Secret을 직접 patch했더니 ArgoCD selfHeal이 git의 예전 값으로 즉시 되돌리는 것도 함께 확인**(GitOps 환경에서 out-of-band 변경이 무의미하다는 걸 실증).
+
+### `/version` 엔드포인트 추가 — 첫 실전 CI/CD 사이클
+- `app/main.go`에 `/version` 핸들러 추가(`version`/`commit`/`buildTime`/`goVersion` 반환), 값은 하드코딩이 아니라 `Dockerfile`의 `-ldflags`로 빌드 시점에 주입.
+- `.github/workflows/ci.yaml`에 `--build-arg VERSION/COMMIT/BUILD_TIME` 추가.
+- 코드 변경 → `git push` → GitHub Actions가 46초 만에 이미지 빌드/GHCR push + `rollout.yaml` 자동 패치·재커밋 → ArgoCD가 새 커밋 감지 후 자동 동기화 → Argo Rollouts가 카나리(20%→50%→80%→100%) 단계를 실제로 밟으며 무중단 전환 — **마이그레이션 이후 처음으로 전체 GitOps 파이프라인을 처음부터 끝까지 실전 검증**.
+- 배포 완료 후 `curl http://localhost/version` → `{"version":"sha-29310c8","commit":"29310c84f866a372f0020da1dc4d2ccc0dd4f898","buildTime":"2026-08-13T05:34:08Z","goVersion":"go1.25.12"}` 확인.
+- enterprise는 이 배포 대상에서 제외되어 여전히 `/version` 없는 `v0.3.1` 사용 중.
