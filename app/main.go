@@ -188,10 +188,6 @@ func versionHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func idHandler(w http.ResponseWriter, r *http.Request) {
-	// TEMPORARY: deliberate bug to test canary auto-abort. Revert immediately after.
-	http.Error(w, "intentional test failure", http.StatusInternalServerError)
-	return
-
 	tracer := otel.Tracer("notiflex")
 	ctx, span := tracer.Start(r.Context(), "id")
 	defer span.End()
