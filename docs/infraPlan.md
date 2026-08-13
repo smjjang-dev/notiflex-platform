@@ -57,20 +57,24 @@
 
 ### Phase 7. 리소스 예산 적용 및 실측 검증
 
-| 컴포넌트 | 요청(request) 예상치 | 비고 |
-|---|---|---|
-| k3s 시스템(Traefik/CoreDNS/local-path/metrics-server) | ~1.0Gi | 기본 내장 |
-| 앱(Go, smb+enterprise) | ~130Mi | scratch 베이스, 매우 가벼움 |
-| Valkey ×2 | ~130Mi | |
-| ArgoCD(core만: server/repo-server/app-controller/redis) | ~800Mi | dex·notifications 제외 |
-| Argo Rollouts controller | ~100Mi | |
-| Prometheus(retention 2~3일로 축소) | ~800Mi~1Gi | 가장 조정 여지 큼 |
-| Grafana | ~200Mi | |
-| Alertmanager | ~50Mi | |
-| Loki(singlebinary, filesystem) | ~300Mi | |
-| Fluent Bit(1노드) | ~60Mi | |
-| Tempo | ~200Mi | |
-| **소계(Kafka 제외)** | **~3.8Gi** | |
+**노트북 k3d 클러스터 실측치 (2026-08-13, Kafka 제외 상태)**
+
+| 컴포넌트 | 요청 예상치 | 실측 메모리 | 비고 |
+|---|---|---|---|
+| k3s 시스템(Traefik/CoreDNS/local-path/metrics-server/svclb) | ~1.0Gi | ~143Mi | 예상보다 훨씬 가벼움 |
+| ArgoCD(core만: server/repo-server/app-controller/redis) | ~800Mi | ~242Mi | core-only 트리밍 효과 큼 |
+| Argo Rollouts controller | ~100Mi | ~25Mi | |
+| Prometheus(retention 2일로 축소) | ~800Mi~1Gi | ~506Mi | |
+| Grafana | ~200Mi | ~317Mi | 예상보다 다소 높음 |
+| Alertmanager | ~50Mi | ~32Mi | |
+| Loki(singlebinary, filesystem, gateway+canary 포함) | ~300Mi | ~170Mi | |
+| Fluent Bit(1노드) | ~60Mi | ~6Mi | |
+| Tempo | ~200Mi | ~29Mi | 트래픽 없는 유휴 상태라 낮음 |
+| kube-state-metrics + node-exporter | (미산정) | ~36Mi | |
+| **파드 합계(Kafka·앱 제외)** | ~3.5Gi | **~1.5Gi** | |
+| **노드 전체 사용량**(`kubectl top node`) | - | **~3.95Gi / 7.7Gi (51%)** | 파드 합계와 약 2.4Gi 차이 = containerd/kubelet/Docker Desktop WSL2 VM 기반 오버헤드 |
+
+**중요 발견**: 파드별 사용량 합계(~1.5Gi)와 노드 전체 사용량(~3.95Gi) 사이에 상당한 차이가 있음 — k3s 런타임 자체(containerd, kubelet) + 노트북은 Docker Desktop의 WSL2 가상머신 기반 오버헤드가 추가로 존재하기 때문. NAS는 Docker Desktop 가상화 계층 없이 k3s가 리눅스에 직접 설치되므로 이 오버헤드는 노트북보다 작을 것으로 예상되나, **정확한 값은 Phase 10 NAS 설치 후 재실측 필요**. 워크로드(파드) 자체의 실측 메모리는 예산표보다 전반적으로 여유 있음이 확인됨 — 이전 예상치(소계 ~3.8Gi)는 보수적으로 잡았던 것으로 판단.
 | Strimzi 오퍼레이터 | ~256Mi | |
 | Kafka(KRaft combined, heap 512Mi) | ~800Mi~1Gi | 가장 무거운 단일 컴포넌트 |
 | **총합** | **~5~5.5Gi** | 9~10Gi 예산 내 여유 확보 |
