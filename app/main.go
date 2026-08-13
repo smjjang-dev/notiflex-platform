@@ -27,7 +27,7 @@ import (
 )
 
 var valkeyClient valkey.Client
-var kafkaProducer sarama.SyncProducer
+var kafkaProducer sarama.AsyncProducer
 
 var httpRequestsTotal = promauto.NewCounterVec(
 	prometheus.CounterOpts{
@@ -128,12 +128,14 @@ func main() {
 	if broker != "" {
 		cfg := sarama.NewConfig()
 		cfg.Producer.Return.Successes = true
+		cfg.Producer.Return.Errors = true
 		cfg.Version = sarama.V4_1_0_0
-		kafkaProducer, err = sarama.NewSyncProducer([]string{broker}, cfg)
+		kafkaProducer, err = sarama.NewAsyncProducer([]string{broker}, cfg)
 		if err != nil {
 			log.Printf("Kafka 연결 실패 (계속): %v", err)
 		} else {
 			defer kafkaProducer.Close()
+			go drainKafkaProducer(kafkaProducer)
 			go consumeKafka(broker)
 		}
 	}
@@ -147,6 +149,24 @@ func main() {
 	http.Handle("/metrics", promhttp.Handler())
 	fmt.Println("Notiflex API server starting on :8080")
 	http.ListenAndServe(":8080", nil)
+}
+
+// drainKafkaProducer must keep reading both channels for the lifetime of the
+// producer, or a full Successes/Errors buffer would eventually block Input().
+func drainKafkaProducer(p sarama.AsyncProducer) {
+	for {
+		select {
+		case err, ok := <-p.Errors():
+			if !ok {
+				return
+			}
+			log.Printf("[Kafka] 전송 실패: %v", err)
+		case _, ok := <-p.Successes():
+			if !ok {
+				return
+			}
+		}
+	}
 }
 
 func consumeKafka(broker string) {
@@ -208,8 +228,14 @@ func idHandler(w http.ResponseWriter, r *http.Request) {
 			Key:   sarama.StringEncoder(fmt.Sprintf("id-%d", result)),
 			Value: sarama.StringEncoder(fmt.Sprintf(`{"id":%d,"pod":"%s"}`, result, pod)),
 		}
-		if _, _, err := kafkaProducer.SendMessage(msg); err != nil {
-			log.Printf("[Kafka] 전송 실패: %v", err)
+		// non-blocking: never let a slow/backed-up broker add latency to the
+		// HTTP response. If the internal buffer is full, drop and log rather
+		// than block (best-effort, matching the previous sync path's
+		// log-and-continue behavior on send failure).
+		select {
+		case kafkaProducer.Input() <- msg:
+		default:
+			log.Printf("[Kafka] 전송 큐가 가득 차 메시지 드롭: id=%d", result)
 		}
 	}
 
