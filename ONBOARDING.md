@@ -69,5 +69,17 @@ curl http://localhost/id
 - Valkey 연결 실패 → `kubectl get pod valkey-primary-0 -n notiflex`
 - Kafka entity-operator CrashLoop → userOperator 섹션 제거
 - GHCR 이미지 pull 401 → private 저장소면 각 네임스페이스에 `ghcr-pull` imagePullSecret 재생성 필요 (Secret은 git에 없음, `gh auth token`으로 생성)
+- Valkey 인증 실패 / Secret 재생성 필요 → `valkey-secret.yaml`은 git에 없음(base64가 평문이나 마찬가지라 커밋 금지), 아래처럼 imperative하게 생성:
+  ```bash
+  kubectl create secret generic valkey \
+    --from-literal=valkey-password="$(openssl rand -base64 24)" \
+    -n notiflex --dry-run=client -o yaml | kubectl apply -f -
+  # enterprise 네임스페이스도 동일 비밀번호로 맞춰줘야 함(같은 Valkey 인스턴스 공유)
+  kubectl create secret generic valkey \
+    --from-literal=valkey-password="<위와 동일한 값>" \
+    -n enterprise --dry-run=client -o yaml | kubectl apply -f -
+  # 비밀번호를 바꿨다면 valkey-primary-0을 재시작해야 새 값을 반영함
+  kubectl delete pod valkey-primary-0 -n notiflex
+  ```
 - Strimzi가 `Unsupported Kafka.spec.kafka.version` 에러 → 오퍼레이터 버전이 올라가며 구버전 Kafka 지원이 빠질 수 있음, 오퍼레이터 로그의 지원 버전 목록 확인 후 `k8s/kafka/kafka-cluster.yaml`의 `version` 값 조정
 - k3d에서 Fluent Bit DaemonSet `FailedMount: /etc/machine-id` → k3d 노드가 컨테이너라 발생하는 노트북 전용 이슈, `daemonSetVolumes`에서 `etcmachineid` 제거 후 설치(NAS 실기기에서는 발생하지 않음)
