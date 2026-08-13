@@ -60,6 +60,14 @@ spec:
     canary:
       canaryService: notiflex-api-preview
       stableService: notiflex-api
+      analysis:
+        templates:
+        - templateName: canary-error-rate
+          clusterScope: true
+        args:
+        - name: service-name
+          value: notiflex-api-preview
+        startingStep: 1
       steps:
       - setWeight: 20
       - pause: {duration: 30s}

@@ -1,0 +1,17 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: notiflex-api
+  namespace: notiflex
+  labels:
+    # kube-prometheus's Prometheus CR only picks up ServiceMonitors carrying
+    # this label (spec.serviceMonitorSelector.matchLabels in the helm release)
+    release: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app: notiflex-api
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 10s

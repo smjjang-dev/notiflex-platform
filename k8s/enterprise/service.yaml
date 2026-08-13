@@ -3,11 +3,14 @@ kind: Service
 metadata:
   name: notiflex-api
   namespace: enterprise
+  labels:
+    app: notiflex-api
 spec:
   selector:
     app: notiflex-api
   ports:
-  - port: 80
+  - name: http
+    port: 80
     targetPort: 8080
 ---
 apiVersion: v1
@@ -15,9 +18,12 @@ kind: Service
 metadata:
   name: notiflex-api-preview
   namespace: enterprise
+  labels:
+    app: notiflex-api
 spec:
   selector:
     app: notiflex-api
   ports:
-  - port: 80
+  - name: http
+    port: 80
     targetPort: 8080

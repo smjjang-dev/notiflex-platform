@@ -8,9 +8,13 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"strconv"
 	"time"
 
 	"github.com/IBM/sarama"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/valkey-io/valkey-go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -24,6 +28,34 @@ import (
 
 var valkeyClient valkey.Client
 var kafkaProducer sarama.SyncProducer
+
+var httpRequestsTotal = promauto.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "http_requests_total",
+		Help: "Total HTTP requests by path and response status code",
+	},
+	[]string{"path", "code"},
+)
+
+type statusRecorder struct {
+	http.ResponseWriter
+	code int
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+	r.code = code
+	r.ResponseWriter.WriteHeader(code)
+}
+
+// instrument wraps a handler so every request is counted in http_requests_total,
+// which the canary AnalysisTemplate queries to gate rollout promotion.
+func instrument(path string, h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		rec := &statusRecorder{ResponseWriter: w, code: http.StatusOK}
+		h(rec, r)
+		httpRequestsTotal.WithLabelValues(path, strconv.Itoa(rec.code)).Inc()
+	}
+}
 
 // set via -ldflags at build time (see Dockerfile)
 var (
@@ -109,9 +141,10 @@ func main() {
 	shutdown := initTracer(os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"))
 	defer shutdown()
 
-	http.HandleFunc("/health", healthHandler)
-	http.HandleFunc("/id", idHandler)
-	http.HandleFunc("/version", versionHandler)
+	http.HandleFunc("/health", instrument("/health", healthHandler))
+	http.HandleFunc("/id", instrument("/id", idHandler))
+	http.HandleFunc("/version", instrument("/version", versionHandler))
+	http.Handle("/metrics", promhttp.Handler())
 	fmt.Println("Notiflex API server starting on :8080")
 	http.ListenAndServe(":8080", nil)
 }
