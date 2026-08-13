@@ -8,7 +8,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/sysnet4admin/notiflex-platform.git
+    repoURL: https://github.com/smjjang-dev/notiflex-platform.git
     targetRevision: main
     path: k8s/smb
   destination:
