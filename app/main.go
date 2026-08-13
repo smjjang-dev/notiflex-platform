@@ -47,9 +47,11 @@ func initTracer(endpoint string) func() {
 		log.Printf("OTel exporter 생성 실패: %v", err)
 		return func() {}
 	}
+	// resource.Merge keeps the first argument's value on key conflicts, and
+	// resource.Default() already sets its own (unknown_service:...) service.name
 	res, err := resource.Merge(
-		resource.Default(),
 		resource.NewSchemaless(attribute.String("service.name", "notiflex-api")),
+		resource.Default(),
 	)
 	if err != nil {
 		log.Printf("OTel resource 생성 실패: %v", err)

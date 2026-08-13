@@ -153,6 +153,7 @@ k3s 마이그레이션 검증이 끝난 뒤 실제 운영 관점에서 발견된
 - **참고(사소한 개선 여지)**: `app/main.go`가 OTel Resource에 `service.name`을 명시적으로 설정하지 않아, Tempo에 `rootServiceName`이 `unknown_service:notiflex-api`로 잡힘 — 기능상 문제는 없으나 Tempo UI에서 서비스명으로 검색/필터링할 때 보기 불편할 수 있음.
 
 ### `service.name` 리소스 속성 추가
-- `initTracer()`에서 `resource.Merge(resource.Default(), resource.NewSchemaless(attribute.String("service.name", "notiflex-api")))`로 TracerProvider에 명시적 서비스명 부여.
+- `initTracer()`에서 `resource.Merge(..., resource.NewSchemaless(attribute.String("service.name", "notiflex-api")))`로 TracerProvider에 명시적 서비스명 부여.
 - semconv 패키지(버전 고정 이슈 있음) 대신 `attribute.String` 직접 사용으로 의존성 추가 없이 처리.
-- CI/CD 파이프라인으로 배포 후 Tempo에서 `rootServiceName`이 `notiflex-api`로 정상 표기되는지 확인 예정.
+- **1차 시도 실패 + 원인**: `resource.Merge(resource.Default(), myResource)` 순서로 넣었더니 여전히 `unknown_service:notiflex-api`로 나옴 — `resource.Merge(a, b)`는 키 충돌 시 **a의 값이 우선**하는데, `resource.Default()`가 이미 자체 `unknown_service:...` 서비스명을 갖고 있어서 내가 지정한 값이 조용히 버려지고 있었음(에러 리턴 없이). 인자 순서를 `resource.Merge(myResource, resource.Default())`로 바꿔서 해결.
+- CI/CD 배포 후 Tempo `rootServiceName`이 `notiflex-api`로 정상 표기됨을 재확인.
