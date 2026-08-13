@@ -23,6 +23,8 @@
 
 This is the practice repository for the book *"AI Agent-Driven Infrastructure: Build, Deploy, and Operate with Claude Code."* Built on the guardrails and execution steps from [sysnet4admin/_Book_GitAIOps](https://github.com/sysnet4admin/_Book_GitAIOps), it is a B2B notification SaaS platform that **AI agents constructed on GKE on their own**: provisioning, deploying, and recording decisions as they went.
 
+> **Update (2026-08-13)**: This fork is being migrated to k3s so it can run on a personal Synology NAS instead of GKE (validated on a laptop k3d cluster; the NAS rollout itself is currently on hold). See [`docs/infraPlan.md`](docs/infraPlan.md) for the migration plan and per-phase results, and [`docs/gke-legacy/`](docs/gke-legacy/) for the original GKE-only manifests.
+
 ## Branch structure: one branch per AI agent
 
 The exact same guardrails were executed by different AI agents, and each agent's result is preserved on its own branch.
@@ -50,7 +52,7 @@ Compare each branch's `docs/architecture-decisions.md` to see how the same 16 de
 | `app/` | Notiflex Go API (Valkey INCR, Kafka producer, OTel tracing) |
 | `k8s/smb/` | SMB tenant manifests (Rollout, Service, Gateway, CronJob) |
 | `k8s/enterprise/` | Enterprise tenant manifests |
-| `k8s/kafka/` | Strimzi Kafka cluster (KRaft, v4.1.0) |
+| `k8s/kafka/` | Strimzi Kafka cluster (KRaft, v4.3.0) |
 | `k8s/monitoring/` | PrometheusRule |
 | `argocd/` | ArgoCD App of Apps (root-app + apps/) |
 | `helm-values/` | Helm chart values |

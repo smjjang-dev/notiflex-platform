@@ -16,6 +16,8 @@
 - push 트리거로 이미지 빌드 → 매니페스트 업데이트 → ArgoCD 자동 배포 흐름 완성
 - 무료 티어로 학습 환경 구성
 
+> **업데이트 (2026-08-13, k3s 마이그레이션)**: GitHub Actions 자체는 그대로 유지. WIF/Artifact Registry 관련 이유만 무효화됨 — `docker/login-action` + `GITHUB_TOKEN`으로 GHCR에 인증 없이(별도 시크릿 설정 없이) push하도록 변경. 나머지 파이프라인 구조(태그 push → sed 패치 → git push)는 동일. 상세는 `docs/infraPlan.md` Phase 4.
+
 ## ADR-003: 메트릭 수집 — Prometheus + Grafana (ch4.2)
 **시점**: 2026-04 / **결정**: kube-prometheus-stack 채택 (vs Datadog, New Relic)
 **이유**:
@@ -48,6 +50,8 @@
 - HealthCheckPolicy — `/health` 경로·포트를 직접 지정하여 정확한 헬스체크
 - K8s 표준 API — 벤더 종속성 최소화
 
+> **업데이트 (2026-08-13, k3s 마이그레이션)**: GKE 관리형 LB를 대체할 클라우드 LB가 없는 단일 노드 환경이라 `gatewayClassName`을 k3s 내장 Traefik(`traefik`)으로 교체. Gateway API 표준 리소스(Gateway/HTTPRoute)는 그대로 유지되어 "K8s 표준 API" 이유는 오히려 더 강화됨 — 리소스 재작성 없이 GatewayClass만 교체하면 됨. GKE 전용 CRD인 `HealthCheckPolicy`는 Traefik에 대응 개념이 없어 제거하고, 기존에 이미 있던 표준 `readinessProbe`/`livenessProbe`로 대체(기능 손실 없음). Traefik의 `web` entryPoint가 내부적으로 8000번 포트를 쓰기 때문에 `Listener.port`를 80→8000으로 조정 필요(외부 노출 포트는 Service가 그대로 80 유지). 원본 매니페스트는 `docs/gke-legacy/`, 상세는 `docs/infraPlan.md` Phase 2.
+
 ## ADR-007: 배포 전략 — Blue/Green (ch5.3)
 **시점**: 2026-04 / **결정**: Argo Rollouts Blue/Green 채택 (vs Flagger, Istio)
 **이유**:
@@ -72,6 +76,8 @@
 - Secret Manager 버전 관리 — 비밀번호 교체 시 새 버전 추가
 - GKE managed addon — 오픈소스 CSI 설치 없이 클러스터 업데이트만으로 활성화
 
+> **업데이트 (2026-08-13, k3s 마이그레이션)**: GKE Secret Manager/Workload Identity는 GCP 종속 기능이라 k3s에서 대안이 없음 — 순수 K8s `Secret`(당시 기각했던 대안)으로 전환. 홈랩 단일 사용자 환경이라 Vault 같은 별도 시크릿 매니저는 과설계로 판단, 대신 k3s 자체의 `--secrets-encryption` 옵션으로 최소한의 저장 시 암호화만 확보. `/mnt/secrets/` 파일 마운트 패턴은 볼륨 타입만 CSI→`secret`으로 바뀌었을 뿐 그대로 유지되어 앱 코드 변경은 없었음. 상세는 `docs/infraPlan.md` Phase 3.
+
 ## ADR-010: 배포 전략 전환 — Canary (ch6.3)
 **시점**: 2026-04 / **결정**: Argo Rollouts Canary로 전환 (Blue/Green에서)
 **이유**:
@@ -87,6 +93,8 @@
 - 단순한 YAML 표현 — `cloud.google.com/gke-nodepool: api-pool` 한 줄로 배치 결정
 - api-pool/worker-pool/ops-pool 역할 분리 — 워크로드 특성에 맞는 머신 타입 배치
 - Spot VM 비용 절감 — 역할별 노드풀에 적합한 VM 크기 선택
+
+> **업데이트 (2026-08-13, k3s 마이그레이션)**: k3s는 단일 노드(노트북 k3d, 목표는 Synology NAS)로 운영되어 노드풀 개념 자체가 없음 — 역할별 배치라는 이 결정의 전제가 사라짐. `rollout.yaml`/`healthcheck-cronjob.yaml`/`kafka-cluster.yaml`/`helm-values/{strimzi,tempo}.yaml`에서 관련 nodeSelector·nodeAffinity를 전부 제거. 향후 NAS에서 노드를 추가로 늘리게 되면 이 ADR에서 기각했던 `nodeAffinity`/`Taint·Toleration`을 재검토할 수 있음. 상세는 `docs/infraPlan.md` Phase 5.
 
 ## ADR-012: 멀티앱 관리 — App of Apps (ch7.3)
 **시점**: 2026-04 / **결정**: Argo CD App of Apps 패턴 채택 (vs 개별 Application 수동 관리, ApplicationSet)

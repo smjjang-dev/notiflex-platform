@@ -95,9 +95,16 @@
 - `repoURL`(GitHub)도 그대로, poll/webhook 방식으로 동기화
 - 카나리 전략(20→50→80→100%, 30초 pause) 동작 확인
 
+### Phase 9.5. 앱 end-to-end 검증 (추가 작업)
+- Valkey가 원본 저장소에도 매니페스트로 커밋되어 있지 않아(ADR-008: Bitnami Helm 차트) 앱이 CrashLoop 상태였음 — `helm-values/valkey.yaml` 신규 작성 후 `helm install valkey bitnami/valkey`로 배포(release replication 모드로 `valkey-primary` 서비스명이 앱 기대값과 일치)
+- `curl http://localhost/health` → `{"status":"ok","version":"v0.3.1"}`, `curl http://localhost/id` → Valkey INCR 기반 ID 정상 증가 확인
+- Kafka 이벤트 발행/수신 로그, `notiflex-healthcheck` CronJob 정상 통과까지 확인 — Traefik→HTTPRoute→Service→Rollout→Valkey/Kafka 전체 체인 검증 완료
+
 ---
 
-## 3. Stage 2 — NAS(DS920+)로 이관
+## 3. Stage 2 — NAS(DS920+)로 이관 (보류 중, 2026-08-13 기준)
+
+> 사용자 요청으로 NAS 실배포는 보류. 아래 Phase 10~12는 계획만 확정된 상태이며 재개 시 SSH 접속 정보가 필요하다.
 
 ### Phase 10. NAS에 k3s 설치
 - Phase 7 실측 데이터를 근거로 예산표 최종 조정

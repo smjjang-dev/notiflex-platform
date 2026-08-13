@@ -1,0 +1,11 @@
+architecture: replication
+auth:
+  existingSecret: valkey
+  existingSecretPasswordKey: valkey-password
+replica:
+  replicaCount: 0
+primary:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi

@@ -23,6 +23,8 @@
 
 [sysnet4admin/_Book_GitAIOps](https://github.com/sysnet4admin/_Book_GitAIOps)의 가드레일과 실행 지침을 기반으로, AI 에이전트가 B2B 알림 SaaS 플랫폼을 GKE 위에 직접 구축한 결과물입니다.
 
+> **2026-08-13 업데이트**: 이 포크는 GKE 원본을 개인 Synology NAS에서 운영할 수 있도록 k3s 기반으로 마이그레이션하는 중입니다(노트북 k3d에서 검증 완료, NAS 이관은 보류 중). 마이그레이션 배경과 단계별 기록은 [`docs/infraPlan.md`](docs/infraPlan.md), GKE 전용 원본 매니페스트는 [`docs/gke-legacy/`](docs/gke-legacy/)를 참고하세요.
+
 ## 브랜치 구조: AI 에이전트별 실행 결과
 
 동일한 가드레일을 서로 다른 AI 에이전트가 실행한 결과가 브랜치별로 보존되어 있습니다.
@@ -50,7 +52,7 @@ flowchart TD
 | `app/` | Notiflex Go API (Valkey INCR, Kafka Producer, OTel 트레이싱) |
 | `k8s/smb/` | SMB 테넌트 매니페스트 (Rollout, Service, Gateway, CronJob) |
 | `k8s/enterprise/` | Enterprise 테넌트 매니페스트 |
-| `k8s/kafka/` | Strimzi Kafka 클러스터 (KRaft, v4.1.0) |
+| `k8s/kafka/` | Strimzi Kafka 클러스터 (KRaft, v4.3.0) |
 | `k8s/monitoring/` | PrometheusRule |
 | `argocd/` | ArgoCD App of Apps (root-app + apps/) |
 | `helm-values/` | Helm 차트 설정값 |

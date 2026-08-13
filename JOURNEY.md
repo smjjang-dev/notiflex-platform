@@ -85,3 +85,29 @@
 | 챕터 | 문제 | 해결 |
 |------|------|------|
 | | | |
+
+## GKE → k3s 마이그레이션 (2026-08-13)
+
+ch9 완료 이후, GKE 원본을 개인 Synology DS920+ NAS(RAM 12GB)에서 운영하기 위해 k3s로 마이그레이션. 전체 계획과 Phase별 실측은 `docs/infraPlan.md` 참조. 노트북 k3d 클러스터에서 전 구간 검증 완료, NAS 이관(Phase 10~12)은 보류 중.
+
+| Phase | 내용 | 상태 |
+|------|------|------|
+| 0~1 | 노트북 환경 준비, k3d 클러스터 구성 | ✅ |
+| 2 | Gateway API → Traefik 전환 | ✅ |
+| 3 | GKE Secret Manager CSI → 순수 K8s Secret | ✅ |
+| 4 | Artifact Registry → GHCR CI/CD 전환 | ✅ |
+| 5 | GKE nodeSelector 전부 제거 | ✅ |
+| 6 | Kafka PVC storageClassName(local-path) 명시 | ✅ |
+| 7 | 리소스 예산 실측 (kube-prometheus-stack/Loki/Tempo/Fluent Bit) | ✅ |
+| 8 | Kafka(Strimzi) combined 모드 배치 | ✅ |
+| 9 | ArgoCD + Argo Rollouts 설치·GitOps 검증 | ✅ |
+| 9.5 | Valkey(Bitnami) 배포, 앱 end-to-end 테스트 | ✅ |
+| 10~12 | NAS(Synology DS920+)에 k3s 설치 및 컷오버 | ⏸ 보류 |
+| 13 | 문서 업데이트(CLAUDE.md/architecture.md/ONBOARDING.md/ADR) | ✅ |
+
+**마이그레이션 중 발견한 이슈**(GKE와 무관한 순수 버전 드리프트/환경 이슈):
+- Traefik의 `web` entryPoint가 내부 8000번 포트 사용 → Gateway `Listener.port`를 80→8000으로 조정
+- 최신 Strimzi 오퍼레이터가 Kafka 4.1.0 미지원 → 4.3.0으로 상향
+- k3d 노드(컨테이너)에 `/etc/machine-id` 파일이 없어 Fluent Bit DaemonSet 마운트 실패 → 노트북 전용 volumes 오버라이드로 우회(NAS에서는 미발생 예상)
+- GHCR private 이미지 pull 401 → `imagePullSecrets`로 해결
+- Valkey는 원본 저장소에도 매니페스트가 없었음(ADR-008에 따라 Bitnami Helm으로 별도 설치) → `helm-values/valkey.yaml` 신규 추가
