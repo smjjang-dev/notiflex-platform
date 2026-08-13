@@ -23,6 +23,14 @@ grafana:
   # scrapes) to root_url, so the scrape path must match where Grafana actually serves it
   serviceMonitor:
     path: /grafana/metrics
+  # the loki chart no longer auto-registers itself as a Grafana datasource
+  # (helm-values/loki.yaml's grafana.datasource key is a no-op on this chart
+  # version), so register it here instead
+  additionalDataSources:
+    - name: Loki
+      type: loki
+      access: proxy
+      url: http://loki-gateway.monitoring.svc.cluster.local
 
 alertmanager:
   alertmanagerSpec:

@@ -139,4 +139,10 @@ k3s 마이그레이션 검증이 끝난 뒤 실제 운영 관점에서 발견된
 - `helm-values/kube-prometheus.yaml`에 `prometheus.prometheusSpec.routePrefix`/`externalUrl` 추가, `k8s/monitoring/prometheus-httproute.yaml` 신규로 `/prometheus` 라우팅.
 - **사이드 이펙트 발견**: Grafana의 `serve_from_sub_path`가 브라우저 요청뿐 아니라 **내부 스크레이핑 요청까지** `root_url`(`http://localhost/grafana/...`)로 301 리다이렉트시켜서, Prometheus가 ClusterIP로 직접 찌르던 `/metrics` 스크레이핑이 전부 실패(`connect: connection refused`)하는 부작용 발생.
 - `grafana.serviceMonitor.path`를 실제 리다이렉트 목적지인 `/grafana/metrics`로 맞춰서 해결. Prometheus 타겟 13개 전부 `up`, `count(up)` 쿼리로 실제 수집 확인.
+
+### Grafana에 Loki 데이터소스 연결 (로그를 한 곳에서 보기)
+- Grafana API로 확인해보니 `Prometheus`/`Alertmanager`만 등록되어 있고 **Loki 데이터소스가 없었음** — `helm-values/loki.yaml`의 `grafana.datasource` 설정은 현재 Loki 차트 버전에서 더 이상 지원하지 않는 죽은 설정(`helm show values grafana/loki`로 확인, 최신 차트엔 해당 키 자체가 없음).
+- `helm-values/kube-prometheus.yaml`에 `grafana.additionalDataSources`로 Loki(`http://loki-gateway.monitoring.svc.cluster.local`)를 직접 등록해서 해결.
+- 검증: Loki 라벨 조회로 로그가 들어오는 네임스페이스 확인(`argo-rollouts, argocd, enterprise, kafka, kube-system, monitoring, notiflex` 7개 전부), `{namespace="notiflex"}` 쿼리로 실제 healthcheck 로그 라인까지 확인.
+- 접속: `/grafana/` 로그인 후 좌측 **Explore** 메뉴에서 데이터소스를 `Loki`로 선택 → LogQL로 조회(예: `{namespace="notiflex"}`).
 - **교훈**: 서브패스 노출(`serve_from_sub_path`)은 외부 접근뿐 아니라 같은 클러스터 내부의 서비스 간 스크레이핑/헬스체크 경로에도 영향을 줄 수 있다 — 도입 시 내부 클라이언트(Prometheus 등)의 접근 경로도 같이 점검 필요.
