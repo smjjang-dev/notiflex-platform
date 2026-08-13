@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/IBM/sarama"
@@ -21,6 +22,13 @@ import (
 
 var valkeyClient valkey.Client
 var kafkaProducer sarama.SyncProducer
+
+// set via -ldflags at build time (see Dockerfile)
+var (
+	version   = "dev"
+	commit    = "unknown"
+	buildTime = "unknown"
+)
 
 func initTracer(endpoint string) func() {
 	if endpoint == "" {
@@ -91,6 +99,7 @@ func main() {
 
 	http.HandleFunc("/health", healthHandler)
 	http.HandleFunc("/id", idHandler)
+	http.HandleFunc("/version", versionHandler)
 	fmt.Println("Notiflex API server starting on :8080")
 	http.ListenAndServe(":8080", nil)
 }
@@ -120,7 +129,17 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 	_, span := tracer.Start(r.Context(), "health")
 	defer span.End()
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "version": "v0.3.1"})
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "version": version})
+}
+
+func versionHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"version":   version,
+		"commit":    commit,
+		"buildTime": buildTime,
+		"goVersion": runtime.Version(),
+	})
 }
 
 func idHandler(w http.ResponseWriter, r *http.Request) {

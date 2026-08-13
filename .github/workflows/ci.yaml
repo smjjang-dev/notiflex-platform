@@ -25,7 +25,11 @@ jobs:
     - name: Build and push image
       run: |
         IMAGE="ghcr.io/${{ github.repository_owner }}/notiflex/api:sha-${GITHUB_SHA::7}"
-        docker build -t "$IMAGE" app/
+        docker build \
+          --build-arg VERSION="sha-${GITHUB_SHA::7}" \
+          --build-arg COMMIT="${GITHUB_SHA}" \
+          --build-arg BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+          -t "$IMAGE" app/
         docker push "$IMAGE"
         echo "IMAGE=$IMAGE" >> $GITHUB_ENV
 
