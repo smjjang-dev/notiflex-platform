@@ -13,6 +13,8 @@ spec:
       labels:
         app: notiflex-api
     spec:
+      imagePullSecrets:
+      - name: ghcr-pull
       volumes:
       - name: secrets
         secret:
