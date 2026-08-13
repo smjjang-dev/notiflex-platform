@@ -12,6 +12,10 @@ grafana:
       cpu: 50m
       memory: 128Mi
   adminPassword: admin
+  grafana.ini:
+    server:
+      root_url: "%(protocol)s://%(domain)s/grafana/"
+      serve_from_sub_path: true
 
 alertmanager:
   alertmanagerSpec:

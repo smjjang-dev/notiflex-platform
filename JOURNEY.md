@@ -127,3 +127,10 @@ k3s 마이그레이션 검증이 끝난 뒤 실제 운영 관점에서 발견된
 - 코드 변경 → `git push` → GitHub Actions가 46초 만에 이미지 빌드/GHCR push + `rollout.yaml` 자동 패치·재커밋 → ArgoCD가 새 커밋 감지 후 자동 동기화 → Argo Rollouts가 카나리(20%→50%→80%→100%) 단계를 실제로 밟으며 무중단 전환 — **마이그레이션 이후 처음으로 전체 GitOps 파이프라인을 처음부터 끝까지 실전 검증**.
 - 배포 완료 후 `curl http://localhost/version` → `{"version":"sha-29310c8","commit":"29310c84f866a372f0020da1dc4d2ccc0dd4f898","buildTime":"2026-08-13T05:34:08Z","goVersion":"go1.25.12"}` 확인.
 - enterprise는 이 배포 대상에서 제외되어 여전히 `/version` 없는 `v0.3.1` 사용 중.
+
+### Grafana를 Gateway로 상시 노출
+- 기존 Prometheus/Grafana는 `kubectl port-forward`로만 접근 가능했음 — `/grafana` 경로로 항상 접속되도록 Gateway/HTTPRoute 추가.
+- `k8s/smb/gateway.yaml`의 `allowedRoutes.namespaces.from`을 `Same`→`All`로 넓혀 다른 네임스페이스(monitoring)의 HTTPRoute도 이 Gateway에 붙을 수 있게 함.
+- `k8s/monitoring/grafana-httproute.yaml` 신규 추가 — `/grafana` prefix를 `kube-prometheus-grafana:80`으로 라우팅.
+- Grafana를 서브패스로 정상 서빙하려면 `server.root_url`/`serve_from_sub_path` 설정이 필요해 `helm-values/kube-prometheus.yaml`에 `grafana.ini` 섹션 추가.
+- **재확인된 패턴**: `k8s/smb/`는 ArgoCD(`notiflex-smb`)가 관리 중이라, git에 커밋하지 않고 `kubectl apply`만 하면 selfHeal이 즉시 되돌림 — 반드시 git 커밋·push가 먼저.
