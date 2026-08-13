@@ -163,4 +163,12 @@ k3s 마이그레이션 검증이 끝난 뒤 실제 운영 관점에서 발견된
   1. `k8s/monitoring/pod-restart-alert.yaml`(PrometheusRule)이 저장소에만 있고 **클러스터에 한 번도 적용된 적이 없었음** — `kubectl apply`로 적용.
   2. Alertmanager의 receiver가 기본값 `"null"`(no-op)만 있어서, 규칙이 발동해도 실제로는 아무 데도 알림이 안 가는 상태였음.
 - 적용 후 검증: Prometheus가 규칙 로드(`health: ok`, `state: inactive`=정상), Prometheus↔Alertmanager 연결(`activeAlertmanagers`) 확인 — **감지 파이프라인은 끝까지 정상 동작**, 마지막 "어디로 보낼지"만 비어있는 상태.
-- 실제 알림 채널은 **Discord webhook**으로 정하고 연결은 보류 — webhook URL 받으면 Alertmanager `receivers` 설정에 `discord_configs` 추가 예정.
+- 실제 알림 채널은 **Discord webhook**으로 정하고 연결은 보류했으나, 이후 **Slack webhook**으로 최종 결정하고 실제 연결 완료.
+
+### Slack 알림 연결
+- webhook URL은 git에 커밋하지 않고 `slack-webhook` Secret(`monitoring` 네임스페이스)으로 보관, Alertmanager 파드에 `/etc/alertmanager/secrets/slack-webhook/`로 마운트 → `global.slack_api_url_file`로 참조.
+- `route.receiver`를 `null`→`slack`으로 변경(Watchdog은 계속 null 유지), `receivers`에 `slack_configs` 추가.
+- 검증: Alertmanager API로 테스트 알림(`TestAlert`) 직접 POST → `active` 상태로 접수 확인, Slack 채널에 실제 도착 확인.
+- **부수 발견**: 활성 알림 목록에 `KubeControllerManagerDown`/`KubeSchedulerDown`/`KubeProxyDown`이 이미 떠 있었음 — k3s는 controller-manager/scheduler/kube-proxy를 별도 파드가 아니라 `k3s server` 프로세스 안에 내장하므로 `absent(up{job="..."})` 기반 기본 규칙이 **k3s에서는 구조적으로 항상 오탐**(NAS에서도 동일하게 발생할 것). Slack 라우팅에서 이 3개만 `null`로 mute 처리.
+- `NodeClockNotSynchronising`도 active였는데 이건 진짜 — 실측 `node_timex_sync_status: 0`, 오차 16초. **Docker Desktop WSL2 VM 시계 드리프트**로 추정(노트북 환경 한정, NAS에서는 미발생 예상) — mute하지 않고 그대로 둠.
+- **트러블슈팅**: helm upgrade가 백그라운드 실행 중 타임아웃으로 끊기면서 릴리스가 `pending-upgrade`에 걸려 다음 upgrade가 `another operation in progress`로 실패 — `helm rollback kube-prometheus <이전 정상 리비전>`으로 `deployed` 상태 복구 후 재적용.
