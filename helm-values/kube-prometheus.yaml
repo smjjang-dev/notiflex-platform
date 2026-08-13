@@ -1,6 +1,9 @@
 prometheus:
   prometheusSpec:
     retention: 2d
+    routePrefix: /prometheus/
+    # matches the current laptop access path; update to the real host when moved to NAS
+    externalUrl: http://localhost/prometheus/
     resources:
       requests:
         cpu: 100m
@@ -16,6 +19,10 @@ grafana:
     server:
       root_url: "%(protocol)s://%(domain)s/grafana/"
       serve_from_sub_path: true
+  # serve_from_sub_path redirects unprefixed requests (incl. internal /metrics
+  # scrapes) to root_url, so the scrape path must match where Grafana actually serves it
+  serviceMonitor:
+    path: /grafana/metrics
 
 alertmanager:
   alertmanagerSpec:

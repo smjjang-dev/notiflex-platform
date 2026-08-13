@@ -134,3 +134,9 @@ k3s 마이그레이션 검증이 끝난 뒤 실제 운영 관점에서 발견된
 - `k8s/monitoring/grafana-httproute.yaml` 신규 추가 — `/grafana` prefix를 `kube-prometheus-grafana:80`으로 라우팅.
 - Grafana를 서브패스로 정상 서빙하려면 `server.root_url`/`serve_from_sub_path` 설정이 필요해 `helm-values/kube-prometheus.yaml`에 `grafana.ini` 섹션 추가.
 - **재확인된 패턴**: `k8s/smb/`는 ArgoCD(`notiflex-smb`)가 관리 중이라, git에 커밋하지 않고 `kubectl apply`만 하면 selfHeal이 즉시 되돌림 — 반드시 git 커밋·push가 먼저.
+
+### Prometheus도 서브패스로 노출
+- `helm-values/kube-prometheus.yaml`에 `prometheus.prometheusSpec.routePrefix`/`externalUrl` 추가, `k8s/monitoring/prometheus-httproute.yaml` 신규로 `/prometheus` 라우팅.
+- **사이드 이펙트 발견**: Grafana의 `serve_from_sub_path`가 브라우저 요청뿐 아니라 **내부 스크레이핑 요청까지** `root_url`(`http://localhost/grafana/...`)로 301 리다이렉트시켜서, Prometheus가 ClusterIP로 직접 찌르던 `/metrics` 스크레이핑이 전부 실패(`connect: connection refused`)하는 부작용 발생.
+- `grafana.serviceMonitor.path`를 실제 리다이렉트 목적지인 `/grafana/metrics`로 맞춰서 해결. Prometheus 타겟 13개 전부 `up`, `count(up)` 쿼리로 실제 수집 확인.
+- **교훈**: 서브패스 노출(`serve_from_sub_path`)은 외부 접근뿐 아니라 같은 클러스터 내부의 서비스 간 스크레이핑/헬스체크 경로에도 영향을 줄 수 있다 — 도입 시 내부 클라이언트(Prometheus 등)의 접근 경로도 같이 점검 필요.
