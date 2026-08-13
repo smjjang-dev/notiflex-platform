@@ -1,0 +1,38 @@
+#!/bin/sh
+# Blocks commits that look like they contain real secret material.
+# Setup (once per clone): git config core.hooksPath .githooks
+
+set -e
+
+STAGED=$(git diff --cached --name-only --diff-filter=ACM)
+[ -z "$STAGED" ] && exit 0
+
+FOUND=0
+
+for f in $STAGED; do
+  case "$f" in
+    *-secret.yaml|*-secret.yml|*secrets.yaml|*secrets.yml)
+      content=$(git show ":$f" 2>/dev/null || true)
+      if echo "$content" | grep -qE '^kind:[[:space:]]*Secret' && \
+         echo "$content" | grep -qE '^[[:space:]]*data:[[:space:]]*$'; then
+        echo "BLOCKED: $f looks like a populated K8s Secret manifest (kind: Secret + data:)."
+        echo "  Secrets must be created imperatively with kubectl, never committed. See ONBOARDING.md."
+        FOUND=1
+      fi
+      ;;
+  esac
+
+  content=$(git show ":$f" 2>/dev/null || true)
+  if echo "$content" | grep -qE '(-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{10,})'; then
+    echo "BLOCKED: $f contains what looks like a private key or API token."
+    FOUND=1
+  fi
+done
+
+if [ "$FOUND" -eq 1 ]; then
+  echo ""
+  echo "Commit aborted. If this is a false positive, use 'git commit --no-verify' deliberately."
+  exit 1
+fi
+
+exit 0

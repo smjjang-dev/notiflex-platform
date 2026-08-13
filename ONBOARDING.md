@@ -13,6 +13,16 @@
 | helm | 3.x | Helm 차트 관리 |
 | gh | 2.x | GitHub 저장소 관리 (GHCR push/pull 인증 포함) |
 
+### 시크릿 유출 방지 훅 (최초 1회)
+
+이 저장소는 `kind: Secret` 매니페스트에 실제 값이 채워진 채로 커밋되는 걸 막는 pre-commit 훅을 `.githooks/`에 두고 있다. clone 직후 한 번만 활성화하면 된다:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+`.github/workflows/secret-scan.yaml`이 동일한 검사를 CI에서도 한 번 더 수행한다 (훅을 깜빡했거나 `--no-verify`로 우회한 경우의 백스톱).
+
 ### 클러스터 접근
 
 ```bash
